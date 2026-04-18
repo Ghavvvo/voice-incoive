@@ -6,6 +6,10 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  TextInput,
+  Alert,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api } from '../../src/api/client';
@@ -21,6 +25,14 @@ export default function HistorialScreen() {
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos');
   const [showTipoMenu, setShowTipoMenu] = useState(false);
   const [showCategoriaMenu, setShowCategoriaMenu] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [transaccionEditando, setTransaccionEditando] = useState<Transaccion | null>(null);
+  const [editTipo, setEditTipo] = useState('gasto');
+  const [editCategoria, setEditCategoria] = useState('');
+  const [editImporte, setEditImporte] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+  const [showEditTipoMenu, setShowEditTipoMenu] = useState(false);
+  const [showEditCategoriaMenu, setShowEditCategoriaMenu] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -58,6 +70,56 @@ export default function HistorialScreen() {
     });
   }
 
+  function abrirEditar(transaccion: Transaccion) {
+    setTransaccionEditando(transaccion);
+    setEditTipo(transaccion.tipo);
+    setEditCategoria(transaccion.categoria);
+    setEditImporte(transaccion.importe.toString());
+    setEditDescripcion(transaccion.descripcion || '');
+    setModalVisible(true);
+  }
+
+  async function guardarEdicion() {
+    if (!transaccionEditando) return;
+    
+    try {
+      await api.actualizarTransaccion(transaccionEditando.id, {
+        tipo: editTipo,
+        categoria: editCategoria,
+        importe: parseFloat(editImporte),
+        descripcion: editDescripcion,
+      });
+      setModalVisible(false);
+      loadTransacciones();
+      Alert.alert('Éxito', 'Transacción actualizada');
+    } catch (error) {
+      console.error('Error actualizando:', error);
+      Alert.alert('Error', 'No se pudo actualizar la transacción');
+    }
+  }
+
+  function confirmarEliminar(transaccion: Transaccion) {
+    Alert.alert(
+      'Eliminar Transacción',
+      '¿Estás seguro de que quieres eliminar esta transacción?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => eliminarTransaccion(transaccion.id) },
+      ]
+    );
+  }
+
+  async function eliminarTransaccion(id: number) {
+    try {
+      await api.eliminarTransaccion(id);
+      loadTransacciones();
+      Alert.alert('Éxito', 'Transacción eliminada');
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      Alert.alert('Error', 'No se pudo eliminar la transacción');
+    }
+  }
+
   const renderItem = ({ item }: { item: Transaccion }) => (
     <View style={styles.item}>
       <View style={styles.itemLeft}>
@@ -65,9 +127,19 @@ export default function HistorialScreen() {
         <Text style={styles.itemDescripcion}>{item.descripcion}</Text>
         <Text style={styles.itemFecha}>{formatFecha(item.fecha)}</Text>
       </View>
-      <Text style={[styles.itemImporte, { color: item.tipo === 'gasto' ? '#e74c3c' : '#2ecc71' }]}>
-        {item.tipo === 'gasto' ? '-' : '+'}${item.importe.toFixed(2)}
-      </Text>
+      <View style={styles.itemRight}>
+        <Text style={[styles.itemImporte, { color: item.tipo === 'gasto' ? '#e74c3c' : '#2ecc71' }]}>
+          {item.tipo === 'gasto' ? '-' : '+'}${item.importe.toFixed(2)}
+        </Text>
+        <View style={styles.itemActions}>
+          <TouchableOpacity onPress={() => abrirEditar(item)} style={styles.actionButton}>
+            <Text style={styles.actionText}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => confirmarEliminar(item)} style={styles.actionButton}>
+            <Text style={styles.actionText}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 
@@ -114,7 +186,7 @@ export default function HistorialScreen() {
         </TouchableOpacity>
 
         {showCategoriaMenu && (
-          <View style={styles.menu}>
+          <View style={[styles.menu, { left: 140 }]}>
             {CATEGORIAS.map((cat) => (
               <TouchableOpacity
                 key={cat}
@@ -145,6 +217,95 @@ export default function HistorialScreen() {
         }
         contentContainerStyle={styles.list}
       />
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Editar Transacción</Text>
+            
+            <Text style={styles.inputLabel}>Tipo</Text>
+            <TouchableOpacity
+              style={styles.input}
+              onPress={() => setShowEditTipoMenu(!showEditTipoMenu)}
+            >
+              <Text>{editTipo === 'gasto' ? 'Gasto' : 'Ingreso'}</Text>
+            </TouchableOpacity>
+            {showEditTipoMenu && (
+              <View style={styles.menu}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setEditTipo('gasto'); setShowEditTipoMenu(false); }}
+                >
+                  <Text style={styles.menuItemText}>Gasto</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setEditTipo('ingreso'); setShowEditTipoMenu(false); }}
+                >
+                  <Text style={styles.menuItemText}>Ingreso</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Categoría</Text>
+            <TouchableOpacity
+              style={styles.input}
+              onPress={() => setShowEditCategoriaMenu(!showEditCategoriaMenu)}
+            >
+              <Text>{editCategoria}</Text>
+            </TouchableOpacity>
+            {showEditCategoriaMenu && (
+              <View style={styles.menu}>
+                {CATEGORIAS.filter(c => c !== 'todos').map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={styles.menuItem}
+                    onPress={() => { setEditCategoria(cat); setShowEditCategoriaMenu(false); }}
+                  >
+                    <Text style={styles.menuItemText}>{cat}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Importe</Text>
+            <TextInput
+              style={styles.input}
+              value={editImporte}
+              onChangeText={setEditImporte}
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.inputLabel}>Descripción</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={editDescripcion}
+              onChangeText={setEditDescripcion}
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={guardarEdicion}
+              >
+                <Text style={styles.modalButtonText}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -197,6 +358,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
     maxHeight: 200,
     overflow: 'scroll',
+    left: 0,
   },
   menuItem: {
     paddingHorizontal: 16,
@@ -239,13 +401,87 @@ const styles = StyleSheet.create({
     color: '#95a5a6',
     marginTop: 4,
   },
+  itemRight: {
+    alignItems: 'flex-end',
+  },
   itemImporte: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  itemActions: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  actionButton: {
+    padding: 4,
+  },
+  actionText: {
+    fontSize: 18,
   },
   empty: {
     textAlign: 'center',
     color: '#7f8c8d',
     marginTop: 40,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    backgroundColor: '#f5f6fa',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#2c3e50',
+    position: 'relative',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#95a5a6',
+  },
+  saveButton: {
+    backgroundColor: '#3498db',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

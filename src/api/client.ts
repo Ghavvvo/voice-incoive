@@ -64,6 +64,66 @@ export const api = {
 
     return response.json();
   },
+
+  audioPreview: async (audioUri: string) => {
+    const response = await fetch(`${API_URL}/audio/preview`, {
+      method: 'POST',
+      body: await createAudioFormData(audioUri),
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  guardarTransacciones: async (transacciones: any[]) => {
+    const response = await fetch(`${API_URL}/transacciones/guardar`, {
+      method: 'POST',
+      body: JSON.stringify(transacciones),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  actualizarTransaccion: async (id: number, data: any) => {
+    const response = await fetch(`${API_URL}/transacciones/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  eliminarTransaccion: async (id: number) => {
+    const response = await fetch(`${API_URL}/transacciones/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
 };
 
 async function createAudioFormData(uri: string): Promise<FormData> {

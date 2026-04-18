@@ -53,13 +53,17 @@ export default function ReportesScreen() {
 
   const chartDataGastos = Object.entries(reporte.por_categoria)
     .filter(([, valor]) => valor > 0)
-    .map(([nombre, valor], index) => ({
-      name: nombre,
-      population: valor,
-      color: COLORS[index % COLORS.length],
-      legendFontColor: '#7f8c8d',
-      legendFontSize: 12,
-    }));
+    .map(([nombre, valor], index) => {
+      const total = Object.values(reporte.por_categoria).reduce((a, b) => a + b, 0);
+      const porcentaje = ((valor / total) * 100).toFixed(1);
+      return {
+        name: `${nombre.charAt(0).toUpperCase() + nombre.slice(1)} (${porcentaje}%)`,
+        population: valor,
+        color: COLORS[index % COLORS.length],
+        legendFontColor: '#7f8c8d',
+        legendFontSize: 12,
+      };
+    });
 
   const barData = {
     labels: Object.keys(reporte.por_categoria).slice(0, 6),

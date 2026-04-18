@@ -23,3 +23,15 @@ export interface Reporte {
   por_categoria: Record<string, number>;
   cantidad_transacciones: number;
 }
+
+export interface TransaccionPendiente {
+  tipo: 'gasto' | 'ingreso';
+  categoria: string;
+  importe: number;
+  descripcion: string;
+}
+
+export interface TransaccionesPendientesResponse {
+  transacciones: TransaccionPendiente[];
+  texto: string;
+}

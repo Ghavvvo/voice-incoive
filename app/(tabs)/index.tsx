@@ -6,6 +6,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
+  ScrollView,
+  FlatList,
 } from 'react-native';
 import {
   useAudioRecorder,
@@ -14,7 +18,9 @@ import {
   RecordingPresets,
 } from 'expo-audio';
 import { api } from '../../src/api/client';
-import { TransaccionAudioResponse, Transaccion } from '../../src/types';
+import { Transaccion, TransaccionPendiente, TransaccionesPendientesResponse } from '../../src/types';
+
+const CATEGORIAS = ['ropa', 'comida', 'transporte', 'alimentacion', 'entretenimiento', 'salud', 'servicios', 'vivienda', 'educacion', 'otros', 'salary', 'negocio', 'transferencia', 'regalo'];
 
 export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -22,6 +28,16 @@ export default function HomeScreen() {
   const [balance, setBalance] = useState({ total_gastos: 0, total_ingresos: 0, balance: 0 });
   const [lastTransaccion, setLastTransaccion] = useState<Transaccion | null>(null);
   const [lastTexto, setLastTexto] = useState<string>('');
+  
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [transaccionesPendientes, setTransaccionesPendientes] = useState<TransaccionPendiente[]>([]);
+  const [textoAudio, setTextoAudio] = useState('');
+  const [editandoIndex, setEditandoIndex] = useState<number | null>(null);
+  const [editTipo, setEditTipo] = useState('gasto');
+  const [editCategoria, setEditCategoria] = useState('');
+  const [editImporte, setEditImporte] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+  const [showCategoriaMenu, setShowCategoriaMenu] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -80,15 +96,11 @@ export default function HomeScreen() {
         throw new Error('No se pudo obtener el audio');
       }
 
-      const result: TransaccionAudioResponse = await api.procesarAudio(uri);
-      setLastTransaccion(result.transaccion);
-      setLastTexto(result.texto);
-      await loadBalance();
+      const result: TransaccionesPendientesResponse = await api.audioPreview(uri);
+      setTransaccionesPendientes(result.transacciones);
+      setTextoAudio(result.texto);
+      setPreviewModalVisible(true);
 
-      Alert.alert(
-        `${result.transaccion.tipo === 'gasto' ? 'Gasto' : 'Ingreso'} registrado`,
-        `$${result.transaccion.importe} - ${result.transaccion.categoria}\n\n"${result.texto}"`
-      );
     } catch (error) {
       console.error('Error processing audio:', error);
       Alert.alert('Error', 'No se pudo procesar el audio. Verifica que el servidor esté corriendo.');
@@ -104,6 +116,82 @@ export default function HomeScreen() {
       await startRecording();
     }
   }
+
+  function abrirEditar(index: number) {
+    const t = transaccionesPendientes[index];
+    setEditandoIndex(index);
+    setEditTipo(t.tipo);
+    setEditCategoria(t.categoria);
+    setEditImporte(t.importe.toString());
+    setEditDescripcion(t.descripcion);
+  }
+
+  function guardarEdicion() {
+    if (editandoIndex === null) return;
+    
+    const nuevas = [...transaccionesPendientes];
+    nuevas[editandoIndex] = {
+      tipo: editTipo as 'gasto' | 'ingreso',
+      categoria: editCategoria,
+      importe: parseFloat(editImporte) || 0,
+      descripcion: editDescripcion,
+    };
+    setTransaccionesPendientes(nuevas);
+    setEditandoIndex(null);
+    setShowCategoriaMenu(false);
+  }
+
+  function eliminarTransaccion(index: number) {
+    const nuevas = transaccionesPendientes.filter((_, i) => i !== index);
+    setTransaccionesPendientes(nuevas);
+  }
+
+  async function guardarTransacciones() {
+    if (transaccionesPendientes.length === 0) {
+      setPreviewModalVisible(false);
+      return;
+    }
+
+    try {
+      await api.guardarTransacciones(transaccionesPendientes);
+      await loadBalance();
+      setPreviewModalVisible(false);
+      setTransaccionesPendientes([]);
+      Alert.alert('Éxito', `Se guardaron ${transaccionesPendientes.length} transacción(es)`);
+    } catch (error) {
+      console.error('Error guardando:', error);
+      Alert.alert('Error', 'No se pudieron guardar las transacciones');
+    }
+  }
+
+  function cancelarPreview() {
+    setPreviewModalVisible(false);
+    setTransaccionesPendientes([]);
+    setTextoAudio('');
+  }
+
+  const renderTransaccion = ({ item, index }: { item: TransaccionPendiente; index: number }) => (
+    <View style={styles.transaccionCard}>
+      <View style={styles.transaccionHeader}>
+        <View style={[styles.tipoBadge, { backgroundColor: item.tipo === 'gasto' ? '#e74c3c' : '#2ecc71' }]}>
+          <Text style={styles.tipoBadgeText}>{item.tipo === 'gasto' ? 'GASTO' : 'INGRESO'}</Text>
+        </View>
+        <View style={styles.transaccionActions}>
+          <TouchableOpacity onPress={() => abrirEditar(index)} style={styles.actionButton}>
+            <Text style={styles.actionText}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => eliminarTransaccion(index)} style={styles.actionButton}>
+            <Text style={styles.actionText}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.transaccionBody}>
+        <Text style={styles.transaccionImporte}>${item.importe.toFixed(2)}</Text>
+        <Text style={styles.transaccionCategoria}>{item.categoria}</Text>
+        <Text style={styles.transaccionDescripcion}>{item.descripcion}</Text>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -158,6 +246,111 @@ export default function HomeScreen() {
           </Text>
         </View>
       )}
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={previewModalVisible}
+        onRequestClose={cancelarPreview}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Transacciones Detectadas</Text>
+            
+            <Text style={styles.textoAudioLabel}>Texto reconocido:</Text>
+            <Text style={styles.textoAudio}>"{textoAudio}"</Text>
+
+            {transaccionesPendientes.length > 0 ? (
+              <FlatList
+                data={transaccionesPendientes}
+                keyExtractor={(_, index) => index.toString()}
+                renderItem={renderTransaccion}
+                style={styles.transaccionesList}
+              />
+            ) : (
+              <Text style={styles.noTransacciones}>No se detectaron transacciones</Text>
+            )}
+
+            {editandoIndex !== null && (
+              <View style={styles.editForm}>
+                <Text style={styles.editFormTitle}>Editar Transacción</Text>
+                
+                <Text style={styles.inputLabel}>Tipo</Text>
+                <View style={styles.tipoSelector}>
+                  <TouchableOpacity
+                    style={[styles.tipoOption, editTipo === 'gasto' && styles.tipoOptionActive]}
+                    onPress={() => setEditTipo('gasto')}
+                  >
+                    <Text style={[styles.tipoOptionText, editTipo === 'gasto' && styles.tipoOptionTextActive]}>Gasto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.tipoOption, editTipo === 'ingreso' && styles.tipoOptionActive]}
+                    onPress={() => setEditTipo('ingreso')}
+                  >
+                    <Text style={[styles.tipoOptionText, editTipo === 'ingreso' && styles.tipoOptionTextActive]}>Ingreso</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.inputLabel}>Categoría</Text>
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => setShowCategoriaMenu(!showCategoriaMenu)}
+                >
+                  <Text>{editCategoria}</Text>
+                </TouchableOpacity>
+                {showCategoriaMenu && (
+                  <View style={styles.categoriaMenu}>
+                    {CATEGORIAS.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={styles.categoriaMenuItem}
+                        onPress={() => { setEditCategoria(cat); setShowCategoriaMenu(false); }}
+                      >
+                        <Text>{cat}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                <Text style={styles.inputLabel}>Importe</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editImporte}
+                  onChangeText={setEditImporte}
+                  keyboardType="numeric"
+                />
+
+                <Text style={styles.inputLabel}>Descripción</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={editDescripcion}
+                  onChangeText={setEditDescripcion}
+                  multiline
+                />
+
+                <TouchableOpacity style={styles.saveEditButton} onPress={guardarEdicion}>
+                  <Text style={styles.saveEditButtonText}>Guardar Cambios</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={cancelarPreview}
+              >
+                <Text style={styles.modalButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={guardarTransacciones}
+              >
+                <Text style={styles.modalButtonText}>Guardar ({transaccionesPendientes.length})</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -267,6 +460,194 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   lastTransaccionTipo: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '95%',
+    maxHeight: '90%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 12,
+  },
+  textoAudioLabel: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 4,
+  },
+  textoAudio: {
+    fontSize: 14,
+    color: '#2c3e50',
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  transaccionesList: {
+    maxHeight: 250,
+  },
+  transaccionCard: {
+    backgroundColor: '#f5f6fa',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  transaccionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  tipoBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  tipoBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  transaccionActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 4,
+  },
+  actionText: {
+    fontSize: 18,
+  },
+  transaccionBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  transaccionImporte: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginRight: 12,
+  },
+  transaccionCategoria: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    textTransform: 'capitalize',
+    marginRight: 12,
+  },
+  transaccionDescripcion: {
+    fontSize: 12,
+    color: '#95a5a6',
+    flex: 1,
+  },
+  noTransacciones: {
+    textAlign: 'center',
+    color: '#7f8c8d',
+    padding: 20,
+  },
+  editForm: {
+    backgroundColor: '#f5f6fa',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
+  editFormTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  textArea: {
+    height: 60,
+    textAlignVertical: 'top',
+  },
+  tipoSelector: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  tipoOption: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  tipoOptionActive: {
+    backgroundColor: '#3498db',
+  },
+  tipoOptionText: {
+    fontSize: 14,
+    color: '#7f8c8d',
+  },
+  tipoOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  categoriaMenu: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginTop: 4,
+    maxHeight: 150,
+  },
+  categoriaMenuItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  saveEditButton: {
+    backgroundColor: '#3498db',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  saveEditButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#95a5a6',
+  },
+  saveButton: {
+    backgroundColor: '#2ecc71',
+  },
+  modalButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
