@@ -17,7 +17,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "La app necesita acceso al micrófono para grabar tu voz y registrar gastos e ingresos."
-      }
+      },
+      "bundleIdentifier": "com.anonymous.gastos-voz-app"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +28,9 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.anonymous.gastos_voz_app"
     },
