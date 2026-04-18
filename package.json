@@ -15,7 +15,7 @@
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/native": "^7.1.33",
     "expo": "~54.0.33",
-    "expo-av": "^16.0.8",
+    "expo-audio": "^1.1.0",
     "expo-constants": "~18.0.13",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",

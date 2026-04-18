@@ -6,21 +6,24 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Platform,
-  PermissionsAndroid,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  useAudioRecorder,
+  getRecordingPermissionsAsync,
+  requestRecordingPermissionsAsync,
+  RecordingPresets,
+} from 'expo-audio';
 import { api } from '../../src/api/client';
 import { TransaccionAudioResponse, Transaccion } from '../../src/types';
 
 export default function HomeScreen() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [recording, setRecording] = useState<any>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [balance, setBalance] = useState({ total_gastos: 0, total_ingresos: 0, balance: 0 });
   const [lastTransaccion, setLastTransaccion] = useState<Transaccion | null>(null);
   const [lastTexto, setLastTexto] = useState<string>('');
+
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   useEffect(() => {
     loadBalance();
@@ -36,13 +39,13 @@ export default function HomeScreen() {
   }
 
   async function requestPermissions() {
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    const current = await getRecordingPermissionsAsync();
+    if (current.granted) {
+      return true;
     }
-    return true;
+
+    const response = await requestRecordingPermissionsAsync();
+    return response.granted;
   }
 
   async function startRecording() {
@@ -53,15 +56,8 @@ export default function HomeScreen() {
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -70,15 +66,15 @@ export default function HomeScreen() {
   }
 
   async function stopRecording() {
-    if (!recording) return;
+    if (!isRecording || !recorder.isRecording) return;
 
     setIsRecording(false);
     setIsLoading(true);
 
     try {
-      await recording.stopAndUnsubscribeAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      await recorder.stop();
+      const uri = recorder.uri;
+      setIsRecording(false);
 
       if (!uri) {
         throw new Error('No se pudo obtener el audio');
